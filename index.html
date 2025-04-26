@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kretz Audio Visualizer </title>
+    <style>
+        /* --- Theme & Base Styles --- */
+        :root {
+            --background-color: #121212; --surface-color: #1e1e1e; --primary-color: #66bb6a;
+            --secondary-color: #00bfa5; --on-background-color: #e0e0e0; --on-surface-color: #ffffff;
+            --border-color: #333333; --error-color: #cf6679; --readout-color: #cccccc;
+            --grid-color: rgba(100, 120, 100, 0.6); --meter-bg-color: #333; --meter-label-color: #aaa;
+            --meter-gradient-low: #66bb6a; --meter-gradient-mid: #ffee58; --meter-gradient-high: #ef5350;
+            --correlation-indicator-color: #bb86fc;
+        }
+        html { height: 100%; }
+        body { background-color: var(--background-color); color: var(--on-background-color); font-family: 'Roboto', 'Segoe UI', sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100%; box-sizing: border-box; padding-bottom: 50px; }
+        h1 { color: var(--on-surface-color); margin-bottom: 15px; }
+
+        /* --- Top Layout Container --- */
+        .top-layout-container { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 20px; width: 100%; max-width: 1000px; margin-bottom: 20px; }
+
+        /* --- Controls Section --- */
+        .controls { background-color: var(--surface-color); padding: 15px 20px; border-radius: 4px; border: 1px solid var(--border-color); box-shadow: 0 1px 3px rgba(0,0,0,0.2); text-align: center; box-sizing: border-box; flex: 1 1 450px; max-width: 550px; }
+        .source-selection label { margin: 0 10px 0 3px; cursor: pointer; position: relative; top: -1px; }
+        .source-selection input[type="radio"] { cursor: pointer; margin-bottom: 5px; }
+        .player-section, .tone-section { margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border-color); display: none; }
+        .player-section label, .tone-section .control-label { display: block; margin-bottom: 5px; font-size: 0.9em; color: var(--on-background-color); text-align: left; }
+        .player-section input[type="file"] { color: var(--on-background-color); margin-bottom: 10px; font-size: 0.9em; max-width: 90%; display: block; margin-left: auto; margin-right: auto;}
+        .player-section audio { width: 100%; margin-top: 5px; }
+        .tone-control-group { margin-bottom: 10px; }
+        .tone-controls-container { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: nowrap; }
+        .tone-section input[type="range"] { flex-grow: 1; cursor: pointer; margin: 0 5px; }
+        .tone-section input[type="number"] { width: 70px; background-color: var(--background-color); color: var(--on-background-color); border: 1px solid var(--border-color); border-radius: 3px; padding: 4px; text-align: right; -moz-appearance: textfield; }
+        .tone-section input[type=number]::-webkit-inner-spin-button, .tone-section input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .tone-section .unit-label { color: var(--readout-color); font-size: 0.9em; white-space: nowrap; }
+
+        /* --- Correlation Meter Section --- */
+        .correlation-meter-section { background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 15px; box-sizing: border-box; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); flex: 0 1 200px; display: flex; flex-direction: column; align-items: center; }
+        .correlation-meter-section h3 { font-size: 1em; margin: 0 0 10px 0; color: var(--on-surface-color); font-weight: normal; }
+        .correlation-track { width: 100%; height: 15px; background-color: var(--meter-bg-color); border-radius: 3px; position: relative; border: 1px solid var(--border-color); margin-bottom: 5px; }
+        .correlation-indicator { width: 3px; height: 100%; background-color: var(--correlation-indicator-color); border-radius: 1px; position: absolute; top: 0; left: 50%; transform: translateX(-50%); transition: left 0.05s linear; }
+        .correlation-labels { display: flex; justify-content: space-between; width: 100%; font-size: 9px; color: var(--meter-label-color); padding: 0 2px; }
+
+        /* --- Master Meter Section --- */
+        .master-meter-section { background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 15px; box-sizing: border-box; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); flex: 0 0 auto; }
+        .master-meter-section h2 { font-size: 1em; margin-bottom: 8px; }
+        .master-meter-container { display: flex; justify-content: center; gap: 10px; margin-top: 5px; align-items: flex-end; }
+        .meter-wrapper { display: flex; align-items: flex-end; gap: 4px; }
+        .meter-track {
+            width: 25px;
+            height: 240px; /* Height confirmed */
+            background-color: var(--meter-bg-color); border: 1px solid var(--border-color); border-radius: 3px; position: relative; overflow: hidden;
+        }
+        .meter-bar {
+            width: 100%;
+             /* Gradient Corrected: Red starts exactly at 0dBFS (~90.9%) */
+             background: linear-gradient(to top,
+                var(--meter-gradient-low) 0%,
+                var(--meter-gradient-mid) 72.7%, /* Yellow start at -6dBFS */
+                var(--meter-gradient-high) 90.9%, /* Red start at 0dBFS */
+                var(--meter-gradient-high) 100%
+            );
+            position: absolute; bottom: 0; left: 0; height: 0%; transition: height 0.05s linear;
+        }
+        .meter-channel-label { text-align: center; font-size: 0.8em; color: var(--readout-color); margin-top: 5px; width: 100%; }
+        .meter-db-labels {
+            height: 240px; /* Match Track Height */
+            display: flex; flex-direction: column; justify-content: space-between;
+            font-size: 9px; color: var(--meter-label-color); text-align: right;
+            padding: 2px 0; box-sizing: border-box;
+        }
+        .meter-db-labels span { position: relative; }
+         .meter-db-labels span::before { content: "—"; position: absolute; right: 100%; margin-right: 3px; color: var(--meter-label-color); line-height: 1; }
+
+        /* --- Buttons --- */
+        button { background-color: var(--primary-color); color: var(--background-color); border: none; padding: 10px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; transition: background-color 0.3s ease, box-shadow 0.3s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); margin: 5px; }
+        button:hover:not(:disabled) { background-color: #388E3C; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); }
+        button:active:not(:disabled) { background-color: #2E7D32; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); }
+        button:disabled { background-color: #555; color: #999; cursor: not-allowed; box-shadow: none; }
+
+        /* --- Visualizers Container & Sections --- */
+        .visualizers { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 1000px; gap: 20px; }
+        .oscilloscope-section, .spectrum-section { background-color: var(--surface-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 15px; width: 100%; box-sizing: border-box; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); margin-bottom: 0; }
+        h2 { color: var(--on-surface-color); margin-top: 0; margin-bottom: 10px; font-size: 1.2em; text-align: center; }
+        .scope-container { display: flex; justify-content: space-around; flex-wrap: wrap; gap: 15px; margin-bottom: 5px; }
+        canvas { display: block; background-color: #000000; border: 1px solid var(--border-color); border-radius: 2px; }
+        .scope-canvas { flex: 1; min-width: 400px; }
+        .scope-readout, .spectrum-readout { text-align: center; font-size: 0.9em; color: var(--readout-color); margin-top: 8px; min-height: 1.2em; }
+        .scope-readout span, .spectrum-readout span { font-weight: bold; color: var(--on-surface-color); margin-left: 5px; }
+        .label { text-align: center; font-size: 0.9em; color: #bbb; margin-top: 5px; }
+        #spectrumCanvas { width: 100%; } .spectrum-section h2 { margin-bottom: 0; }
+
+        /* --- Status & Footer --- */
+        p#status { margin-top: 5px; margin-bottom: 15px; font-style: italic; color: #aaa; text-align: center; min-height: 2.4em; padding: 0 10px; line-height: 1.4; }
+        p#status strong { color: var(--error-color); font-weight: normal; }
+        footer { margin-top: 30px; padding: 10px; text-align: center; font-size: 0.8em; color: #888; width: 100%; }
+
+    </style>
+</head>
+<body>
+    <h1>Kretz Audio Visualizer</h1>
+
+    <div class="top-layout-container">
+        <div class="controls">
+             <div class="source-selection"> <strong>Select Audio Source:</strong><br> <input type="radio" id="sourceFile" name="audioType" value="file" checked> <label for="sourceFile">Local File</label> <br> <input type="radio" id="sourceMic" name="audioType" value="mic"> <label for="sourceMic">Microphone / Line In</label> <br> <input type="radio" id="sourceScreen" name="audioType" value="screen"> <label for="sourceScreen">Screen / Tab Audio</label> <br> <input type="radio" id="sourceTone" name="audioType" value="tone"> <label for="sourceTone">Test Tone</label> </div>
+             <div id="playerSection" class="player-section"> <label class="control-label" for="audioFile">Select Audio File:</label> <input type="file" id="audioFile" accept=".mp3,.wav,.ogg,.flac"> <audio id="audioPlayer" controls></audio> </div>
+             <div id="toneSection" class="tone-section"> <div class="tone-control-group"> <label class="control-label" for="frequencyInput">Frequency:</label> <div class="tone-controls-container"> <input type="range" id="frequencySlider" min="1" max="20000" value="440" step="1"> <input type="number" id="frequencyInput" min="1" max="20000" value="440" step="1"> <span class="unit-label">Hz</span> </div> </div> <div class="tone-control-group"> <label class="control-label" for="gainInput">Gain:</label> <div class="tone-controls-container"> <input type="range" id="gainSlider" min="-60" max="0" value="-12" step="1"> <input type="number" id="gainInput" min="-60" max="0" value="-12" step="1"> <span class="unit-label">dBFS</span> </div> </div> </div>
+             <button id="startButton" disabled>Start Visualization</button> <button id="stopButton" disabled>Stop Visualization</button> <p id="status">Select an audio file above.</p>
+        </div>
+        <div class="correlation-meter-section"> <h3>Stereo Width</h3> <div class="correlation-track"> <div id="correlationIndicator" class="correlation-indicator"></div> </div> <div class="correlation-labels"> <span>-1</span> <span>0</span> <span>+1</span> </div> </div>
+        <div class="master-meter-section"> <h2>Master</h2> <div class="master-meter-container"> <div class="meter-wrapper"> <div class="meter-track" id="meterTrackL"> <div id="meterBarL" class="meter-bar"></div> </div> <div class="meter-db-labels"> <span>+3</span> <span>0</span> <span>-6</span> <span>-12</span> <span>-18</span> <span>-24</span> <span>-30</span> </div> </div> <div class="meter-wrapper"> <div class="meter-track" id="meterTrackR"> <div id="meterBarR" class="meter-bar"></div> </div> <div class="meter-db-labels"> <span>+3</span> <span>0</span> <span>-6</span> <span>-12</span> <span>-18</span> <span>-24</span> <span>-30</span> </div> </div> </div> <div style="display: flex; justify-content: center; gap: 50px;"> <div class="meter-channel-label">L</div> <div class="meter-channel-label">R</div> </div> </div>
+    </div>
+
+    <div class="visualizers">
+         <div class="oscilloscope-section"> <h2>Stereo Oscilloscope</h2> <div class="scope-container"> <div> <canvas id="scopeCanvasL" width="450" height="300" class="scope-canvas"></canvas> <div class="label">Left Channel</div> <div class="scope-readout">dBFS: <span id="scopeL-db">-inf</span></div> </div> <div> <canvas id="scopeCanvasR" width="450" height="300" class="scope-canvas"></canvas> <div class="label">Right Channel</div> <div class="scope-readout">dBFS: <span id="scopeR-db">-inf</span></div> </div> </div> </div>
+         <div class="spectrum-section"> <h2>Spectrum Analyzer</h2> <div class="spectrum-readout">Peak Frequency: <span id="spectrum-peak-freq">~ Hz</span></div> <canvas id="spectrumCanvas" width="830" height="180"></canvas> </div>
+    </div>
+
+    <footer> <p>Created by Jonas Lund 2025</p> </footer>
+
+    <script>
+        // --- Configuration ---
+        const SCOPE_FFT_SIZE = 4096; const SPECTRUM_FFT_SIZE = 2048; const SPECTRUM_SMOOTHING = 0.85;
+        const MIC_AUDIO_CONSTRAINTS = { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, sampleRate: 44100 } };
+        const SCREEN_AUDIO_CONSTRAINTS = { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, sampleRate: 44100 }, video: true };
+        const PRIMARY_COLOR_RGB = 'rgb(102, 187, 106)'; const SECONDARY_COLOR_RGB = 'rgb(0, 191, 165)'; const MIN_FREQ = 20;
+        const FREQ_LABELS = [ { freq: 50, label: '50' }, { freq: 100, label: '100' }, { freq: 200, label: '200' }, { freq: 500, label: '500' }, { freq: 1000, label: '1k' }, { freq: 2000, label: '2k' }, { freq: 5000, label: '5k' }, { freq: 10000, label: '10k' }, { freq: 15000, label: '15k' }, { freq: 20000, label: '20k' } ];
+        const METER_MIN_DB = -30; const METER_MAX_DB = 3;
+        const SINE_PEAK_DB_OFFSET = 3.0103;
+
+        // --- DOM Elements ---
+        const scopeCanvasL = document.getElementById('scopeCanvasL'), scopeCtxL = scopeCanvasL.getContext('2d'); const scopeCanvasR = document.getElementById('scopeCanvasR'), scopeCtxR = scopeCanvasR.getContext('2d'); const spectrumCanvas = document.getElementById('spectrumCanvas'), spectrumCtx = spectrumCanvas.getContext('2d');
+        const startButton = document.getElementById('startButton'); const stopButton = document.getElementById('stopButton'); const statusText = document.getElementById('status'); const sourceRadioButtons = document.querySelectorAll('input[name="audioType"]');
+        const scopeLdbText = document.getElementById('scopeL-db'); const scopeRdbText = document.getElementById('scopeR-db'); const spectrumPeakFreqText = document.getElementById('spectrum-peak-freq');
+        const audioFileInput = document.getElementById('audioFile'); const audioPlayer = document.getElementById('audioPlayer'); const playerSection = document.getElementById('playerSection'); const toneSection = document.getElementById('toneSection');
+        const frequencySlider = document.getElementById('frequencySlider'); const frequencyInput = document.getElementById('frequencyInput');
+        const gainSlider = document.getElementById('gainSlider'); const gainInput = document.getElementById('gainInput');
+        const meterBarL = document.getElementById('meterBarL'); const meterBarR = document.getElementById('meterBarR');
+        const meterTrackL = document.getElementById('meterTrackL'); const meterTrackR = document.getElementById('meterTrackR'); const correlationIndicator = document.getElementById('correlationIndicator');
+
+        // --- Web Audio API Variables ---
+        let audioContext; let mediaElementSourceNode = null; let testToneOscillator = null; let testToneGainNode = null;
+        let currentSourceNode = null; let analyserNodeL, analyserNodeR, analyserNodeSpectrum;
+        let splitterNode; let scopeBufferLengthL, scopeBufferLengthR; let scopeDataArrayL, scopeDataArrayR;
+        let spectrumBufferLength; let spectrumDataArray; let mediaStream; let animationFrameId;
+        let selectedAudioSourceType = 'file';
+
+        // --- Grid & Meter Configuration ---
+        const DB_GRID_LEVELS = [ { db: 0, label: '0 dB' }, { db: -6, label: '-6' }, { db: -12, label: '-12' }, { db: -18, label: '-18' }, { db: -24, label: '-24' }, ];
+        const GRID_COLOR = getComputedStyle(document.documentElement).getPropertyValue('--grid-color').trim() || 'rgba(100, 100, 100, 0.7)';
+
+        // --- Function to draw Oscilloscope Grid ---
+        function drawOscilloscopeGrid(ctx, canvasWidth, canvasHeight) { ctx.save(); ctx.strokeStyle = GRID_COLOR; ctx.fillStyle = GRID_COLOR; ctx.lineWidth = 1; ctx.font = '10px Roboto, Segoe UI, sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.setLineDash([4, 4]); const centerY = canvasHeight / 2; ctx.beginPath(); ctx.moveTo(0, centerY); ctx.lineTo(canvasWidth, centerY); ctx.stroke(); DB_GRID_LEVELS.forEach(level => { const amplitude = Math.pow(10, level.db / 20); const yPos = (amplitude * 0.5 + 0.5) * canvasHeight; const yNeg = (-amplitude * 0.5 + 0.5) * canvasHeight; if (level.db !== 0) { ctx.beginPath(); ctx.moveTo(0, yPos); ctx.lineTo(canvasWidth - 20, yPos); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, yNeg); ctx.lineTo(canvasWidth - 20, yNeg); ctx.stroke(); } ctx.fillText(level.label, canvasWidth - 5, yPos); }); ctx.restore(); }
+        // --- Drawing Functions ---
+        function drawScope(analyser, dataArray, bufferLength, canvasCtx, canvas) { canvasCtx.fillStyle = '#000000'; canvasCtx.fillRect(0, 0, canvas.width, canvas.height); drawOscilloscopeGrid(canvasCtx, canvas.width, canvas.height); canvasCtx.lineWidth = 2; canvasCtx.strokeStyle = PRIMARY_COLOR_RGB; canvasCtx.beginPath(); const sliceWidth = canvas.width * 1.0 / bufferLength; let x = 0; for (let i = 0; i < bufferLength; i++) { const v = dataArray[i]; const y = (v * 0.5 + 0.5) * canvas.height; if (i === 0) { canvasCtx.moveTo(x, y); } else { canvasCtx.lineTo(x, y); } x += sliceWidth; } canvasCtx.lineTo(canvas.width, canvas.height / 2); canvasCtx.stroke(); }
+        function calculateDBFS(linearValue) { if (linearValue <= 0) return -Infinity; const db = 20 * Math.log10(linearValue); return db }
+        function freqToXLog(freq, minFreq, maxFreq, canvasWidth) { if (freq <= minFreq) return 0; const logMin = Math.log10(minFreq); const logMax = Math.log10(maxFreq); const logFreq = Math.log10(freq); return canvasWidth * (logFreq - logMin) / (logMax - logMin); }
+        function drawSpectrum() { if (!analyserNodeSpectrum || !audioContext) return; analyserNodeSpectrum.getByteFrequencyData(spectrumDataArray); spectrumCtx.fillStyle = '#000000'; spectrumCtx.fillRect(0, 0, spectrumCanvas.width, spectrumCanvas.height); const canvasWidth = spectrumCanvas.width; const canvasHeight = spectrumCanvas.height; const maxFreq = audioContext.sampleRate / 2; const binWidthHz = maxFreq / spectrumBufferLength; const gradient = spectrumCtx.createLinearGradient(0, 0, 0, canvasHeight - 20); gradient.addColorStop(0, SECONDARY_COLOR_RGB); gradient.addColorStop(0.5, PRIMARY_COLOR_RGB); gradient.addColorStop(1, '#000000'); spectrumCtx.fillStyle = gradient; for (let i = 1; i < spectrumBufferLength; i++) { const freq = i * binWidthHz; const nextFreq = (i + 1) * binWidthHz; const xPos = freqToXLog(freq, MIN_FREQ, maxFreq, canvasWidth); const nextXPos = freqToXLog(nextFreq, MIN_FREQ, maxFreq, canvasWidth); let barWidth = Math.max(1, nextXPos - xPos - 1); const barHeight = (spectrumDataArray[i] / 255) * (canvasHeight - 25); if (barHeight > 0 && barWidth > 0 && xPos < canvasWidth) { spectrumCtx.fillRect(xPos, canvasHeight - 25 - barHeight, barWidth, barHeight); } } spectrumCtx.fillStyle = 'rgba(224, 224, 224, 0.7)'; spectrumCtx.font = '10px Roboto, Segoe UI, sans-serif'; spectrumCtx.textAlign = 'center'; spectrumCtx.strokeStyle = 'rgba(100, 100, 100, 0.5)'; spectrumCtx.lineWidth = 1; FREQ_LABELS.forEach(labelInfo => { if (labelInfo.freq <= maxFreq && labelInfo.freq >= MIN_FREQ) { const x = freqToXLog(labelInfo.freq, MIN_FREQ, maxFreq, canvasWidth); spectrumCtx.fillText(labelInfo.label, x, canvasHeight - 10); spectrumCtx.beginPath(); spectrumCtx.moveTo(x, canvasHeight - 25); spectrumCtx.lineTo(x, canvasHeight - 20); spectrumCtx.stroke(); } }); spectrumCtx.textAlign = 'left'; }
+
+        // --- Function to map dBFS to Meter Percentage (0-100, bottom up, NEW RANGE) ---
+        function dbToMeterPercent(db) { if (!isFinite(db)) return 0; const range = METER_MAX_DB - METER_MIN_DB; if (range <= 0) return 0; const clampedDb = Math.max(METER_MIN_DB, Math.min(db, METER_MAX_DB)); const percent = ((clampedDb - METER_MIN_DB) / range) * 100; return Math.max(0, Math.min(percent, 100)); }
+
+        // --- Function to Calculate Stereo Correlation ---
+        function calculateCorrelation(dataL, dataR, bufferLength) { if (!dataL || !dataR || bufferLength === 0) return 0; let sumL_R = 0; let sumL2 = 0; let sumR2 = 0; const epsilon = 1e-10; for (let i = 0; i < bufferLength; i++) { const l = dataL[i] || 0; const r = dataR[i] || 0; sumL_R += l * r; sumL2 += l * l; sumR2 += r * r; } const denominator = Math.sqrt(sumL2 * sumR2); if (denominator < epsilon) { return 0; } const correlation = sumL_R / denominator; return Math.max(-1, Math.min(correlation, 1)); }
+
+        // --- Main Visualization Loop (Corrected Meter Logic) ---
+        function visualizationLoop() {
+             let peakL = 0; let peakR = 0; let peakSpectrumIndex = 0; let peakSpectrumValue = 0; let correlation = 0;
+             // Always calculate peak from data
+             if (analyserNodeL && scopeDataArrayL) { analyserNodeL.getFloatTimeDomainData(scopeDataArrayL); for(let i=0; i < scopeBufferLengthL; i++) { const absVal = Math.abs(scopeDataArrayL[i]); if (absVal > peakL) peakL = absVal; } drawScope(analyserNodeL, scopeDataArrayL, scopeBufferLengthL, scopeCtxL, scopeCanvasL); } else { scopeCtxL.fillStyle = '#000'; scopeCtxL.fillRect(0, 0, scopeCanvasL.width, scopeCanvasL.height); drawOscilloscopeGrid(scopeCtxL, scopeCanvasL.width, scopeCanvasL.height); scopeCtxL.strokeStyle = '#444'; scopeCtxL.lineWidth = 1; scopeCtxL.beginPath(); scopeCtxL.moveTo(0, scopeCanvasL.height/2); scopeCtxL.lineTo(scopeCanvasL.width, scopeCanvasL.height/2); scopeCtxL.stroke(); peakL = 0; }
+             if (analyserNodeR && scopeDataArrayR) { analyserNodeR.getFloatTimeDomainData(scopeDataArrayR); let hasRightSignal = false; for(let i=0; i < scopeBufferLengthR; i++) { const absVal = Math.abs(scopeDataArrayR[i]); if (absVal > 1e-6) hasRightSignal = true; if (absVal > peakR) peakR = absVal; } if (hasRightSignal) { drawScope(analyserNodeR, scopeDataArrayR, scopeBufferLengthR, scopeCtxR, scopeCanvasR); } else { if (analyserNodeL && scopeDataArrayL) { drawScope(analyserNodeL, scopeDataArrayL, scopeBufferLengthL, scopeCtxR, scopeCanvasR); peakR = peakL; } else { scopeCtxR.fillStyle = '#000'; scopeCtxR.fillRect(0, 0, scopeCanvasR.width, scopeCanvasR.height); drawOscilloscopeGrid(scopeCtxR, scopeCanvasR.width, scopeCanvasR.height); scopeCtxR.strokeStyle = '#444'; scopeCtxR.lineWidth = 1; scopeCtxR.beginPath(); scopeCtxR.moveTo(0, scopeCanvasR.height/2); scopeCtxR.lineTo(scopeCanvasR.width, scopeCanvasR.height/2); scopeCtxR.stroke(); peakR = 0; } } } else { if (analyserNodeL && scopeDataArrayL) { drawScope(analyserNodeL, scopeDataArrayL, scopeBufferLengthL, scopeCtxR, scopeCanvasR); peakR = peakL; } else { scopeCtxR.fillStyle = '#000'; scopeCtxR.fillRect(0, 0, scopeCanvasR.width, scopeCanvasR.height); drawOscilloscopeGrid(scopeCtxR, scopeCanvasR.width, scopeCanvasR.height); scopeCtxR.strokeStyle = '#444'; scopeCtxR.lineWidth = 1; scopeCtxR.beginPath(); scopeCtxR.moveTo(0, scopeCanvasR.height/2); scopeCtxR.lineTo(scopeCanvasR.width, scopeCanvasR.height/2); scopeCtxR.stroke(); peakR = 0; } }
+             // Correlation
+             if (analyserNodeL && scopeDataArrayL && analyserNodeR && scopeDataArrayR) { correlation = calculateCorrelation(scopeDataArrayL, scopeDataArrayR, Math.min(scopeBufferLengthL, scopeBufferLengthR)); } else { correlation = 0; }
+             // Spectrum
+             if (analyserNodeSpectrum && spectrumDataArray && audioContext) { drawSpectrum(); for (let i = 1; i < spectrumBufferLength; i++) { if (spectrumDataArray[i] > peakSpectrumValue) { peakSpectrumValue = spectrumDataArray[i]; peakSpectrumIndex = i; } } } else { spectrumCtx.fillStyle = '#000'; spectrumCtx.fillRect(0, 0, spectrumCanvas.width, spectrumCanvas.height); peakSpectrumValue = 0; }
+
+             // Calculate peak dBFS from waveform data
+             const scopeDbL = calculateDBFS(peakL);
+             const scopeDbR = calculateDBFS(peakR);
+
+             // --- Update Text Readouts (Always show measured peak) ---
+             scopeLdbText.textContent = isFinite(scopeDbL) ? scopeDbL.toFixed(1) : '-inf';
+             scopeRdbText.textContent = isFinite(scopeDbR) ? scopeDbR.toFixed(1) : '-inf';
+             if (audioContext && peakSpectrumValue > 0) { const peakFreq = peakSpectrumIndex * (audioContext.sampleRate / 2) / spectrumBufferLength; spectrumPeakFreqText.textContent = `${peakFreq.toFixed(0)} Hz`; } else { spectrumPeakFreqText.textContent = `~ Hz`; }
+
+             // --- Update Meters (Use measured peak dBFS for ALL sources) ---
+             const percentL = dbToMeterPercent(scopeDbL); // Use scopeDbL
+             const percentR = dbToMeterPercent(scopeDbR); // Use scopeDbR
+             meterBarL.style.height = `${percentL}%`;
+             meterBarR.style.height = `${percentR}%`;
+
+             // Update Correlation Meter
+             const correlationPercent = (correlation + 1) / 2 * 100;
+             correlationIndicator.style.left = `${correlationPercent}%`;
+
+             animationFrameId = requestAnimationFrame(visualizationLoop);
+        }
+
+
+        // --- UI Update Function ---
+        function updateUIForSourceSelection(sourceType) { selectedAudioSourceType = sourceType; stopAudio("Switched source type.", true); playerSection.style.display = (sourceType === 'file') ? 'block' : 'none'; toneSection.style.display = (sourceType === 'tone') ? 'block' : 'none'; if (sourceType === 'file') { startButton.disabled = !(audioPlayer.src && audioPlayer.src.startsWith('blob:')); statusText.textContent = startButton.disabled ? "Select an audio file above." : "File loaded. Click 'Start Visualization'."; } else if (sourceType === 'tone') { startButton.disabled = false; statusText.textContent = "Adjust controls and click 'Start Visualization'."; } else { startButton.disabled = false; statusText.innerHTML = (sourceType === 'mic') ? "Select 'Start Visualization' to request microphone access." : "Select 'Start Visualization' to request screen/tab access.<br>**Enable audio sharing** in the pop-up."; } stopButton.disabled = true; }
+        // --- Create Audio Context (lazily) ---
+        function ensureAudioContext() { if (!audioContext || audioContext.state === 'closed') { try { audioContext = new (window.AudioContext || window.webkitAudioContext)(); console.log("AudioContext created/reopened. State:", audioContext.state); } catch (e) { console.error("Error creating AudioContext:", e); statusText.innerHTML = "<strong>Error:</strong> Could not create AudioContext."; return false; } } if (audioContext.state === 'suspended') { audioContext.resume().catch(e => console.error("Error resuming AudioContext:", e)); } return true; }
+
+        // --- Audio Setup (Applies Gain Offset correctly) ---
+        async function setupAudio() {
+            startButton.disabled = true; sourceRadioButtons.forEach(radio => radio.disabled = true); if (!ensureAudioContext()) { /* Reset UI */ return; } if (audioContext.state === 'suspended') { try { await audioContext.resume(); console.log("AudioContext resumed."); } catch (e) { console.error("Failed to resume AudioContext:", e); statusText.innerHTML = "<strong>Error:</strong> Could not resume audio context."; /* Reset UI */ return; } }
+            try {
+                 currentSourceNode = null; if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; } if (testToneOscillator) { try {testToneOscillator.stop(); } catch(e){} testToneOscillator = null; testToneGainNode = null; }
+                 if (selectedAudioSourceType === 'file') { statusText.textContent = "Connecting audio player..."; if (!audioPlayer.src || !audioPlayer.src.startsWith('blob:')) { throw new Error("No audio file loaded."); } if (!mediaElementSourceNode) { try { mediaElementSourceNode = audioContext.createMediaElementSource(audioPlayer); console.log("Created MediaElementSourceNode."); } catch (e) { if (e.name === 'InvalidStateError') { throw new Error("Internal state error: MediaElementSourceNode exists unexpectedly."); } else { throw e; } } } currentSourceNode = mediaElementSourceNode; }
+                 else if (selectedAudioSourceType === 'tone') {
+                     statusText.textContent = "Generating test tone...";
+                     testToneOscillator = audioContext.createOscillator(); testToneGainNode = audioContext.createGain(); testToneOscillator.type = 'sine';
+                     const gainDb = parseFloat(gainInput.value);
+                     const adjustedGainDb = gainDb - SINE_PEAK_DB_OFFSET; // Offset applied for output level
+                     const linearGain = Math.pow(10, adjustedGainDb / 20);
+                     const freq = parseFloat(frequencyInput.value);
+                     testToneGainNode.gain.setValueAtTime(linearGain, audioContext.currentTime);
+                     testToneOscillator.frequency.setValueAtTime(freq, audioContext.currentTime);
+                     testToneOscillator.connect(testToneGainNode); testToneOscillator.start(); console.log(`Created tone. Freq:${freq}, CtrlGain:${gainDb}dB, ActualLinGain:${linearGain.toFixed(3)}`);
+                     currentSourceNode = testToneGainNode;
+                 }
+                 else if (selectedAudioSourceType === 'mic') { statusText.innerHTML = "Requesting microphone access..."; mediaStream = await navigator.mediaDevices.getUserMedia(MIC_AUDIO_CONSTRAINTS); currentSourceNode = audioContext.createMediaStreamSource(mediaStream); mediaStream.getAudioTracks()[0].onended = () => stopAudio("Microphone stream ended."); }
+                 else { statusText.innerHTML = "Requesting screen/tab access..."; mediaStream = await navigator.mediaDevices.getDisplayMedia(SCREEN_AUDIO_CONSTRAINTS); const audioTracks = mediaStream.getAudioTracks(); if (audioTracks.length === 0) { throw new Error("No audio track received from screen/tab."); } currentSourceNode = audioContext.createMediaStreamSource(mediaStream); audioTracks[0].onended = () => stopAudio("Audio sharing stopped."); const videoTracks = mediaStream.getVideoTracks(); if (videoTracks.length > 0) { videoTracks[0].onended = () => stopAudio("Screen sharing stopped."); } }
+                 if (!currentSourceNode) { throw new Error("Failed to get audio source node."); } statusText.textContent = "Initializing visualizers..."; currentSourceNode.disconnect(); analyserNodeSpectrum = audioContext.createAnalyser(); analyserNodeSpectrum.fftSize = SPECTRUM_FFT_SIZE; analyserNodeSpectrum.smoothingTimeConstant = SPECTRUM_SMOOTHING; spectrumBufferLength = analyserNodeSpectrum.frequencyBinCount; spectrumDataArray = new Uint8Array(spectrumBufferLength); splitterNode = audioContext.createChannelSplitter(2); analyserNodeL = audioContext.createAnalyser(); analyserNodeL.fftSize = SCOPE_FFT_SIZE; scopeBufferLengthL = analyserNodeL.frequencyBinCount; scopeDataArrayL = new Float32Array(scopeBufferLengthL); analyserNodeR = audioContext.createAnalyser(); analyserNodeR.fftSize = SCOPE_FFT_SIZE; scopeBufferLengthR = analyserNodeR.frequencyBinCount; scopeDataArrayR = new Float32Array(scopeBufferLengthR); currentSourceNode.connect(splitterNode); splitterNode.connect(analyserNodeL, 0); splitterNode.connect(analyserNodeR, 1); currentSourceNode.connect(analyserNodeSpectrum); console.log("Connected source node to analysers."); if (selectedAudioSourceType === 'file' || selectedAudioSourceType === 'tone') { currentSourceNode.connect(audioContext.destination); console.log(`Connected ${selectedAudioSourceType} source to destination.`); } else { console.log("Mic/Screen source NOT connected to destination."); } statusText.textContent = `Visualizing (${selectedAudioSourceType})...`; if (animationFrameId) cancelAnimationFrame(animationFrameId); visualizationLoop(); stopButton.disabled = false;
+             } catch (err) { /* Error Handling */ console.error(`Error setting up audio (${selectedAudioSourceType}):`, err); let userMessage = `<strong>Error:</strong> ${err.message}`; statusText.innerHTML = `${userMessage}<br>Please check console or try again.`; stopAudio("Setup failed.", true); startButton.disabled = (selectedAudioSourceType === 'file' && (!audioPlayer.src || !audioPlayer.src.startsWith('blob:'))) || (selectedAudioSourceType === 'tone'); sourceRadioButtons.forEach(radio => radio.disabled = false); stopButton.disabled = true; }
+        }
+
+        // --- Stop Audio Function ---
+        function stopAudio(reasonMessage = "Visualization stopped.", quiet = false) { if (animationFrameId) { cancelAnimationFrame(animationFrameId); animationFrameId = null; } if (splitterNode) { try { splitterNode.disconnect(); } catch(e){} } if (analyserNodeL) { try { analyserNodeL.disconnect(); } catch(e){} } if (analyserNodeR) { try { analyserNodeR.disconnect(); } catch(e){} } if (analyserNodeSpectrum) { try { analyserNodeSpectrum.disconnect(); } catch(e){} } if (mediaStream && currentSourceNode instanceof MediaStreamAudioSourceNode) { try { currentSourceNode.disconnect(); } catch(e){} mediaStream.getTracks().forEach(track => { track.onended = null; track.stop(); }); mediaStream = null; } else if (currentSourceNode === mediaElementSourceNode && audioContext) { try { currentSourceNode.disconnect(audioContext.destination); console.log("Disconnected MediaElementSource from destination."); } catch (e) {} } else if (currentSourceNode === testToneGainNode && audioContext) { if (testToneOscillator) { try { testToneOscillator.stop(); } catch(e) {} testToneOscillator = null; console.log("Stopped Test Tone Oscillator."); } try { currentSourceNode.disconnect(); console.log("Disconnected Test Tone Gain node fully."); } catch (e) {} testToneGainNode = null; } analyserNodeL = null; analyserNodeR = null; analyserNodeSpectrum = null; scopeDataArrayL = null; scopeDataArrayR = null; spectrumDataArray = null; splitterNode = null; currentSourceNode = null; if (!quiet) { /* Clear Canvases, Readouts, Meters */ scopeCtxL.fillStyle = '#000'; scopeCtxL.fillRect(0, 0, scopeCanvasL.width, scopeCanvasL.height); drawOscilloscopeGrid(scopeCtxL, scopeCanvasL.width, scopeCanvasL.height); scopeCtxR.fillStyle = '#000'; scopeCtxR.fillRect(0, 0, scopeCanvasR.width, scopeCanvasR.height); drawOscilloscopeGrid(scopeCtxR, scopeCanvasR.width, scopeCanvasR.height); spectrumCtx.fillStyle = '#000'; spectrumCtx.fillRect(0, 0, spectrumCanvas.width, spectrumCanvas.height); scopeLdbText.textContent = "-inf"; scopeRdbText.textContent = "-inf"; spectrumPeakFreqText.textContent = "~ Hz"; meterBarL.style.height = '0%'; meterBarR.style.height = '0%'; correlationIndicator.style.left = '50%'; } sourceRadioButtons.forEach(radio => radio.disabled = false); stopButton.disabled = true; startButton.disabled = (selectedAudioSourceType === 'file' && (!audioPlayer.src || !audioPlayer.src.startsWith('blob:'))); if(selectedAudioSourceType === 'tone' || selectedAudioSourceType === 'mic' || selectedAudioSourceType === 'screen') { startButton.disabled = false; } if (!quiet) { /* Status Update */ statusText.textContent = reasonMessage; setTimeout(() => { if (!animationFrameId && !stopButton.disabled) { updateUIForSourceSelection(selectedAudioSourceType); } }, 3000); } }
+
+        // --- Event Listeners ---
+        startButton.addEventListener('click', setupAudio); stopButton.addEventListener('click', () => stopAudio());
+        audioFileInput.addEventListener('change', (event) => { const file = event.target.files[0]; let currentObjectURL = audioPlayer.src; if (file) { if (!ensureAudioContext()) { statusText.innerHTML = "<strong>Error:</strong> Cannot initialize audio."; return; } const newObjectURL = URL.createObjectURL(file); audioPlayer.src = newObjectURL; statusText.textContent = `File "${file.name}" loaded. Click 'Start Visualization'.`; startButton.disabled = false; if (mediaElementSourceNode) { try { mediaElementSourceNode.disconnect(); } catch(e) { console.warn("Error disconnecting old MediaElementSourceNode:", e); } mediaElementSourceNode = null; console.log("Reset MediaElementSourceNode for new file."); } if (currentObjectURL && currentObjectURL.startsWith('blob:')) { URL.revokeObjectURL(currentObjectURL); } } else { statusText.textContent = "File selection cancelled."; startButton.disabled = true; audioPlayer.src = ''; if (currentObjectURL && currentObjectURL.startsWith('blob:')) { URL.revokeObjectURL(currentObjectURL); } if (mediaElementSourceNode) { try { mediaElementSourceNode.disconnect(); } catch(e) {} mediaElementSourceNode = null; } } });
+        sourceRadioButtons.forEach(radio => { radio.addEventListener('change', (event) => { updateUIForSourceSelection(event.target.value); }); });
+        // --- Frequency Control Listener ---
+        function updateFrequency(newFreq) { const min = parseFloat(frequencySlider.min); const max = parseFloat(frequencySlider.max); const clampedFreq = Math.max(min, Math.min(newFreq, max)); frequencySlider.value = clampedFreq; frequencyInput.value = clampedFreq; if (testToneOscillator && audioContext && audioContext.state === 'running') { testToneOscillator.frequency.setTargetAtTime(clampedFreq, audioContext.currentTime, 0.01); } }
+        frequencySlider.addEventListener('input', (event) => { updateFrequency(parseFloat(event.target.value)); });
+        frequencyInput.addEventListener('change', (event) => { updateFrequency(parseFloat(event.target.value || 1)); });
+        // --- Gain Control Listener (Applies Offset for actual gain node) ---
+        function updateGain(newGainDb) { const minDb = parseFloat(gainSlider.min); const maxDb = parseFloat(gainSlider.max); const clampedGainDb = Math.max(minDb, Math.min(newGainDb, maxDb)); gainSlider.value = clampedGainDb; gainInput.value = clampedGainDb; if (testToneGainNode && audioContext && audioContext.state === 'running') { const adjustedGainDb = clampedGainDb - SINE_PEAK_DB_OFFSET; const linearGain = Math.pow(10, adjustedGainDb / 20); testToneGainNode.gain.setTargetAtTime(linearGain, audioContext.currentTime, 0.01); } }
+        gainSlider.addEventListener('input', (event) => { updateGain(parseFloat(event.target.value)); });
+        gainInput.addEventListener('change', (event) => { updateGain(parseFloat(event.target.value || -60)); });
+
+        // --- Initial UI Setup ---
+        updateFrequency(parseFloat(frequencySlider.value)); updateGain(parseFloat(gainSlider.value));
+        updateUIForSourceSelection(selectedAudioSourceType);
+        drawOscilloscopeGrid(scopeCtxL, scopeCanvasL.width, scopeCanvasL.height); drawOscilloscopeGrid(scopeCtxR, scopeCanvasR.width, scopeCanvasR.height);
+        correlationIndicator.style.left = '50%';
+
+    </script>
+</body>
+</html>
